@@ -1,0 +1,812 @@
+---
+title: "SRT"
+author: "Tamas Foldes"
+output: html_document
+---
+
+
+```{r}
+# setup constant variables over all simulations
+n_features <- 60
+cue_features <- 1:40
+# a <- b  <- c <- d <- context <- outcome <- rep(0, n_features)
+
+# setup stimuli - unique vector for each stimulus position and response
+zeros <- rep(0,20)
+positions <- 4
+n_trials <- 200*positions
+practice_trials <- 20*positions
+
+
+locations <- replicate(positions,replace(x<-rbinom(20, 1, 0.5), x==0,-1),simplify=FALSE)
+responses <- replicate(positions,replace(x<-rbinom(20, 1, 0.5), x==0,-1),simplify=FALSE)
+
+# practice
+
+practice_locations <- replicate(positions,replace(x<-rbinom(20, 1, 0.5), x==0,-1),simplify=FALSE)
+practice_responses <- replicate(positions,replace(x<-rbinom(20, 1, 0.5), x==0,-1),simplify=FALSE)
+
+# training data Si//R(i-1)//R
+
+for (i in 1:(n_trials+1)) {
+  if (i == 1){
+    training_array <- matrix(c(locations[[1]], zeros, responses[[1]]), ncol=60)
+  }else{
+    training_array <- rbind(training_array, c(locations[[ifelse(i %% positions, i %% positions, positions)]], tail(training_array[i-1,],20) ,responses[[ifelse(i %% positions, i %% positions, positions)]]))
+  }
+}
+
+# random data Si//R(i-1)//R
+
+for (i in 1:(n_trials+1)) {
+  if (i == 1){
+    random_array <- matrix(c(locations[[sample.int(positions, 1)]], zeros, responses[[sample.int(positions, 1)]]), ncol=60)
+  }else{
+    random_array <- rbind(random_array, c( locations[[sample.int(positions, 1)]], tail(random_array[i-1,],20) , responses[[sample.int(positions, 1)]]))
+  }
+}
+
+# practice data
+
+for (i in 1:(practice_trials+1)) {
+  if (i == 1){
+    practice_array <- matrix(c(practice_locations[[1]], zeros, practice_responses[[1]]), ncol=60)
+  }else{
+    practice_array <- rbind(practice_array, c(practice_locations[[ifelse(i %% positions, i %% positions, positions)]], tail(practice_array[i-1,],20) ,practice_responses[[ifelse(i %% positions, i %% positions, positions)]]))
+  }
+}
+
+# number of replications
+n_replications <- 25
+
+# learning rates
+p_encode <- c(0.2, 0.4, 0.6, 0.8, 1)
+
+# specify models
+model = "Minerva2"
+```
+
+```{r}
+# specify events
+# training_a_event <- a + context
+# training_b_event <- b + context
+# training_c_event <- c + context
+# training_d_event <- d + context
+# 
+# training_ab_event <- a+b + context
+# training_bc_event <- b+c + context
+# training_cd_event <- c+d + context
+# 
+# test_ac_event <- a + c + context 
+# recall_abc_event <- a + b+ c + context 
+# 
+# 
+# 
+# # specify probe
+# probe_a <- a + context
+# probe_b <- b + context
+# probe_c <- c + context
+# probe_d <- d + context
+
+# setup trial number
+# n_trials <- 99
+
+#training array
+# training_array <- rep(list(training_ab_event, training_bc_event, training_cd_event),33)
+#random shuffle
+#training_array <- sample(training_array)
+
+
+# prepare results object as 3D array[p_encode, n_trials, n_replications]
+sim_results_0_pretrials <- array(NA, c(length(p_encode), n_trials+1, n_replications))
+sim_results_10_pretrials <- array(NA, c(length(p_encode), n_trials+1, n_replications))
+sim_results_30_pretrials <- array(NA, c(length(p_encode), n_trials+1, n_replications))
+sim_results_100_pretrials <- array(NA, c(length(p_encode), n_trials+1, n_replications))
+
+# prepare results object as 3D array[p_encode, n_trials, n_replications] for resonance
+sim_resonance_0_pretrials <- array(NA, c(length(p_encode), n_trials+1, n_replications))
+sim_resonance_10_pretrials <- array(NA, c(length(p_encode), n_trials+1, n_replications))
+sim_resonance_30_pretrials <- array(NA, c(length(p_encode), n_trials+1, n_replications))
+sim_resonance_100_pretrials <- array(NA, c(length(p_encode), n_trials+1, n_replications))
+
+# specify object for normalized echo for every trial as 3D array[p_encode, n_trials, n_replications]
+# with cells containing normalized echo vector 
+normalized_echos_0_pretrials <- array(list(rep(NA, n_features)), dim = c(length(p_encode), n_trials+1, n_replications))
+normalized_echos_10_pretrials <- array(list(rep(NA, n_features)), dim = c(length(p_encode), n_trials+1, n_replications))
+normalized_echos_30_pretrials <- array(list(rep(NA, n_features)), dim = c(length(p_encode), n_trials+1, n_replications))
+normalized_echos_100_pretrials <- array(list(rep(NA, n_features)), dim = c(length(p_encode), n_trials+1, n_replications))
+```
+
+```{r}
+# main test
+#-----------------------100 Pretrials Condition--------------------------------#
+
+for (m in 1:length(model)){
+  for (r in 1:n_replications) {
+    print(r)
+    for(i in 1:length(p_encode)) {
+      
+      #To acknowledge the instructions given to the participants before starting the experiment proper, we stocked memory with one example of each S(i)//R(i21)//R(i) contingency with L ¼ 1.
+      
+      # Memory is empty on first trial
+      
+      normalized_echo <- probe_memory(training_array[1,], NULL, cue_features, model = model[m])
+      expectancy <- expect_event(training_array[1,], normalized_echo)
+      memory <- learn(
+        normalized_echo
+        , training_array[1,]
+        , 1
+        , NULL
+        , model = model[m]
+      )
+      
+      # stock with 4 further exemplar memories
+      
+      for(x in 2:5){
+        normalized_echo <- probe_memory(training_array[x,], memory, cue_features, model = model[m])
+        expectancy <- expect_event(training_array[x,], normalized_echo)
+        memory <- learn(
+            normalized_echo
+            , training_array[x,]
+            , 1
+            , memory
+            , model = model[m]
+          )
+      }
+      
+      # practice blocks
+      
+      for(p in 1:nrow(practice_array)){
+        normalized_echo <- probe_memory(practice_array[p,], memory, cue_features, model = model[m])
+        expectancy <- expect_event(practice_array[p,], normalized_echo)
+        memory <- learn(
+            normalized_echo
+            , practice_array[p,]
+            , 0.7
+            , memory
+            , model = model[m]
+          )
+      }
+      
+      
+      # normalized_echo <- probe_memory(test_ac_event, NULL, cue_features, model = model[m])
+      # expectancy <- expect_event(recall_abc_event, normalized_echo)
+
+      # sim_results_100_pretrials[[i,1,r]] <- expectancy
+      # normalized_echos_100_pretrials[[i,1,r]] <- normalized_echo
+      
+       # Experimental trials
+      for(j in 2:(n_trials+1)) {
+        
+          iteration <- 1
+          expectancy <- 0
+          while(expectancy<0.99){
+              res <- probe_memory_resonance(training_array[j,], memory, cue_features, model = model[m], iteration)
+              normalized_echo <- res$normalized_echo
+              expectancy <- expect_event(training_array[j,], normalized_echo)
+              iteration <- iteration+1
+              #print(expectancy)
+          }
+          
+          memory <- learn(
+            normalized_echo
+            , training_array[j,]
+            , p_encode[i]
+            , memory
+            , model = model[m]
+          )
+          
+          #normalized_echo <- probe_memory(training_array[j,], memory, cue_features, model = model[m])
+          expectancy <- expect_event(training_array[j,], normalized_echo)
+          
+          sim_resonance_100_pretrials[[i,j,r]] <- iteration
+          sim_results_100_pretrials[[i,j,r]] <- expectancy 
+          normalized_echos_100_pretrials[[i,j,r]] <- normalized_echo
+      }
+      
+    }
+  }
+}
+
+#-----calculate mean and standard error of results objects-----#
+divide_by_n_rep <- function(x, n_rep = n_replications){x/n_rep}
+# Sum of expectancies for each trial over all replications
+sum_sim_results_100_pretrials <- apply(sim_results_100_pretrials, c(1,2), FUN = sum)
+# Mean of expectancies for each trial over all replications
+mean_sim_results_100_pretrials <- apply(sum_sim_results_100_pretrials, c(1,2), FUN = divide_by_n_rep)
+
+# Sum of expectancies for each trial over all replications
+sum_sim_resonance_100_pretrials <- apply(sim_resonance_100_pretrials, c(1,2), FUN = sum)
+# Mean of expectancies for each trial over all replications
+mean_sim_resonance_100_pretrials <- apply(sum_sim_resonance_100_pretrials, c(1,2), FUN = divide_by_n_rep)
+```
+
+```{r}
+#remove na
+library(tidyverse)
+mean_sim_resonance_100_pretrials <- mean_sim_resonance_100_pretrials[,-1]
+tmp <- t(mean_sim_resonance_100_pretrials)
+n<-20
+resonance_summary <- t(aggregate(tmp,list(rep(1:(nrow(tmp)%/%n+1),each=n,len=nrow(tmp))),mean)[-1])
+resonance_summary_df <- as.data.frame(resonance_summary, row.names = p_encode) %>% rownames_to_column("Learning_rate") %>% gather(Block, MeanExp, -Learning_rate)
+resonance_summary_df <- resonance_summary_df %>% transform(., Block = parse_number(Block))
+
+
+
+library(tidyr)
+#resonance_summary_df %>% gather(Block, Number, 1:40)
+
+#library(ggplot)
+
+ggplot(data=resonance_summary_df, aes(x=Block, y=MeanExp, color=Learning_rate)) +
+  geom_line()+
+  geom_point()
+
+# critical trial until x|cue >= 0.95 in each replication for every learning rate
+# crit_trials_100_pretrials <- apply(sim_results_100_pretrials, c(1,3), FUN = find_crit_trial)
+# se of critical trials until x|cue >= 0.95 in each replication for every learning rate
+# std_error_100_pretrials <- apply(crit_trials_100_pretrials, 1, FUN = std_err)
+```
+
+```{r}
+memory %>%
+  dist() %>%          
+  cmdscale() %>%
+  as_tibble()
+```
+
+
+```{r}
+# random test
+#-----------------------100 Pretrials Condition--------------------------------#
+
+for (m in 1:length(model)){
+  for (r in 1:n_replications) {
+    print(r)
+    for(i in 1:length(p_encode)) {
+      
+      #To acknowledge the instructions given to the participants before starting the experiment proper, we stocked memory with one example of each S(i)//R(i21)//R(i) contingency with L ¼ 1.
+      
+      # Memory is empty on first trial
+      
+      normalized_echo <- probe_memory(random_array[1,], NULL, cue_features, model = model[m])
+      expectancy <- expect_event(random_array[1,], normalized_echo)
+      memory <- learn(
+        normalized_echo
+        , random_array[1,]
+        , 1
+        , NULL
+        , model = model[m]
+      )
+      
+      # stock with 4 further exemplar memories
+      
+      for(x in 2:5){
+        normalized_echo <- probe_memory(random_array[x,], memory, cue_features, model = model[m])
+        expectancy <- expect_event(random_array[x,], normalized_echo)
+        memory <- learn(
+            normalized_echo
+            , random_array[x,]
+            , 1
+            , memory
+            , model = model[m]
+          )
+      }
+      
+      # practice blocks
+      
+      for(p in 1:nrow(practice_array)){
+        normalized_echo <- probe_memory(practice_array[p,], memory, cue_features, model = model[m])
+        expectancy <- expect_event(practice_array[p,], normalized_echo)
+        memory <- learn(
+            normalized_echo
+            , practice_array[p,]
+            , 0.7
+            , memory
+            , model = model[m]
+          )
+      }
+      
+      
+      # normalized_echo <- probe_memory(test_ac_event, NULL, cue_features, model = model[m])
+      # expectancy <- expect_event(recall_abc_event, normalized_echo)
+
+      # sim_results_100_pretrials[[i,1,r]] <- expectancy
+      # normalized_echos_100_pretrials[[i,1,r]] <- normalized_echo
+      
+       # Experimental trials
+      for(j in 2:(n_trials+1)) {
+        
+          iteration <- 1
+          expectancy <- 0
+          while(expectancy<=0.99){
+              res <- probe_memory_resonance(random_array[j,], memory, cue_features, model = model[m], iteration)
+              normalized_echo <- res$normalized_echo
+              expectancy <- expect_event(random_array[j,], normalized_echo)
+              iteration <- iteration+1
+              #print(expectancy)
+          }
+          
+          memory <- learn(
+            normalized_echo
+            , random_array[j,]
+            , p_encode[i]
+            , memory
+            , model = model[m]
+          )
+          
+          #normalized_echo <- probe_memory(random_array[j,], memory, cue_features, model = model[m])
+          expectancy <- expect_event(random_array[j,], normalized_echo)
+          
+          sim_resonance_100_pretrials[[i,j,r]] <- iteration
+          sim_results_100_pretrials[[i,j,r]] <- expectancy 
+          normalized_echos_100_pretrials[[i,j,r]] <- normalized_echo
+      }
+      
+    }
+  }
+}
+
+#-----calculate mean and standard error of results objects-----#
+divide_by_n_rep <- function(x, n_rep = n_replications){x/n_rep}
+# Sum of expectancies for each trial over all replications
+sum_sim_results_100_pretrials <- apply(sim_results_100_pretrials, c(1,2), FUN = sum)
+# Mean of expectancies for each trial over all replications
+mean_sim_results_100_pretrials <- apply(sum_sim_results_100_pretrials, c(1,2), FUN = divide_by_n_rep)
+
+# Sum of expectancies for each trial over all replications
+sum_sim_resonance_100_pretrials <- apply(sim_resonance_100_pretrials, c(1,2), FUN = sum)
+# Mean of expectancies for each trial over all replications
+mean_sim_resonance_100_pretrials_rnd <- apply(sum_sim_resonance_100_pretrials, c(1,2), FUN = divide_by_n_rep)
+
+#remove na
+mean_sim_resonance_100_pretrials_rnd <- mean_sim_resonance_100_pretrials_rnd[,-1]
+tmp <- t(mean_sim_resonance_100_pretrials_rnd)
+n<-20
+resonance_summary_rnd <- t(aggregate(tmp,list(rep(1:(nrow(tmp)%/%n+1),each=n,len=nrow(tmp))),mean)[-1])
+resonance_summary_rnd_df <- as.data.frame(resonance_summary, row.names = p_encode)
+
+# critical trial until x|cue >= 0.95 in each replication for every learning rate
+# crit_trials_100_pretrials <- apply(sim_results_100_pretrials, c(1,3), FUN = find_crit_trial)
+# se of critical trials until x|cue >= 0.95 in each replication for every learning rate
+# std_error_100_pretrials <- apply(crit_trials_100_pretrials, 1, FUN = std_err)
+```
+
+```{r}
+#-----------------------0 Pretrials Condition--------------------------------#
+
+for (m in 1:length(model)){
+  for (r in 1:n_replications) {
+    for(i in 1:length(p_encode)) {
+      # Memory is empty on first trial
+      normalized_echo <- probe_memory(probe_a, NULL, cue_features, model = model[m])
+      expectancy <- expect_event(outcome, normalized_echo)
+      memory <- learn(
+        normalized_echo
+        , test_ax_event
+        , p_encode[i]
+        , NULL
+        , model = model[m]
+      )
+      sim_results_0_pretrials[[i,1,r]] <- expectancy
+      normalized_echos_0_pretrials[[i,1,r]] <- normalized_echo
+      
+       # A -> X trials
+      for(j in 2:n_trials) {
+          normalized_echo <- probe_memory(probe_a, memory, cue_features, model = model[m])
+          expectancy <- expect_event(outcome, normalized_echo)
+          memory <- learn(
+            normalized_echo
+            , test_ax_event
+            , p_encode[i]
+            , memory
+            , model = model[m]
+          )
+          sim_results_0_pretrials[[i,j,r]] <- expectancy 
+          normalized_echos_0_pretrials[[i,j,r]] <- normalized_echo
+      }
+    }
+  }
+}
+
+#-----calculate mean and standard error of results objects-----#
+divide_by_n_rep <- function(x, n_rep = n_replications){x/n_rep}
+# Sum of expectancies for each trial over all replications
+mean_sim_results_0_pretrials <- apply(sim_results_0_pretrials, c(1,2), FUN = sum)
+# Mean of expectancies for each trial over all replications
+mean_sim_results_0_pretrials <- apply(mean_sim_results_0_pretrials, c(1,2), FUN = divide_by_n_rep)
+# critical trial until x|cue >= 0.95 in each replication for every learning rate
+crit_trials_0_pretrials <- apply(sim_results_0_pretrials, c(1,3), FUN = find_crit_trial)
+# se of critical trials until x|cue >= 0.95 in each replication for every learning rate
+std_error_0_pretrials <- apply(crit_trials_0_pretrials, 1, FUN = std_err)
+```
+
+
+```{r}
+res_mat <- matrix(NA, nrow = 3, ncol = 3)
+
+#compute means over replications
+x <- rowMeans(crit_trials_0_pretrials)
+#compute standard errors over replications
+y <- std_error_0_pretrials
+
+for (i in 1:length(p_encode)){
+  res_mat[1,i] <- table_fun(x[i], y[i])
+}
+```
+
+```{r, cache=TRUE}
+# --------------------- Diagnostic Plots --------------------------------------#
+
+# par(mfrow=c(1,2))
+# 
+# # memory encoding of the outcome over the trials
+# plot(
+#   1:n_trials
+#   , memory[, 101]
+#   , type = "l"
+#   , col = scales::alpha("black", 0.3)
+#   , ylim = c(-2, 2)
+#   , xlab = "Trial"
+#   , ylab = "Feature encoding"
+#   , main = "Features of outcome X"
+#   , las = 1
+# )
+# for(i in 102:120) {
+#   lines(
+#     1:n_trials
+#     , memory[, i]
+#     , col = scales::alpha("black", 0.3)
+#   )
+# }
+# 
+# # memory encoding of cue A over the trials
+# plot(
+#   1:n_trials
+#   , memory[, 1]
+#   , type = "l"
+#   , col = scales::alpha("black", 0.3)
+#   , ylim = c(-2, 2)
+#   , xlab = "Trial"
+#   , ylab = "Feature encoding"
+#   , main = "Features of Cue A"
+#   , las = 1
+# )
+# for(i in 2:20) {
+#   lines(
+#     1:n_trials
+#     , memory[, i]
+#     , col = scales::alpha("black", 0.3)
+#   )
+# }
+```
+
+```{r, cache=TRUE}
+# normalized echos over the trials
+
+# echos <- vector()
+# for (i in 1:n_trials){
+#   echos <- c(echos,normalized_echos_0_pretrials[[3,i,1]])
+# }
+# 
+# data <- data.frame(Stimuli = c(1:n_features), Echo = echos, frame = rep(1:n_trials, each = n_features))
+# 
+# 
+# # Make an animated boxplot
+# p <- ggplot(data, aes(x=Stimuli, y=Echo, fill=Stimuli)) + 
+#   geom_bar(stat='identity') +
+#   theme_bw() +
+#   # gganimate specific bits:
+#   transition_states(
+#     states = frame,
+#     transition_length = 1,
+#     state_length = 1, 
+#     wrap = TRUE
+#   ) 
+# 
+# p <- p + ggtitle('Now showing Trial:{closest_state}')
+# animate(p, nframes = 2*n_trials)
+```
+
+```{r}
+#-----------------------10 Pretrials Condition--------------------------------#
+
+for (m in 1:length(model)){
+  for (r in 1:n_replications) {
+    for(i in 1:length(p_encode)) {
+      # Memory is empty on first trial
+      normalized_echo <- probe_memory(probe_a, NULL, cue_features, model = model[m])
+      expectancy <- expect_event(outcome, normalized_echo)
+      memory <- learn(
+        normalized_echo
+        , training_a_event
+        , p_encode[i]
+        , NULL
+        , model = model[m]
+      )
+      sim_results_10_pretrials[[i,1,r]] <- expectancy
+      normalized_echos_10_pretrials[[i,1,r]] <- normalized_echo
+      
+       # A trials
+      for(j in 2:10) {
+          normalized_echo <- probe_memory(probe_a, memory, cue_features, model = model[m])
+          expectancy <- expect_event(outcome, normalized_echo)
+          memory <- learn(
+            normalized_echo
+            , training_a_event
+            , p_encode[i]
+            , memory
+            , model = model[m]
+          )
+          sim_results_10_pretrials[[i,j,r]] <- expectancy 
+          normalized_echos_10_pretrials[[i,j,r]] <- normalized_echo
+      }
+      
+       # A -> X trials
+      for(j in 11:n_trials) {
+          normalized_echo <- probe_memory(probe_a, memory, cue_features, model = model[m])
+          expectancy <- expect_event(outcome, normalized_echo)
+          memory <- learn(
+            normalized_echo
+            , test_ax_event
+            , p_encode[i]
+            , memory
+            , model = model[m]
+          )
+          sim_results_10_pretrials[[i,j,r]] <- expectancy 
+          normalized_echos_10_pretrials[[i,j,r]] <- normalized_echo
+      }
+    }
+  }
+}
+
+#-----calculate mean and standard error of results objects-----#
+divide_by_n_rep <- function(x, n_rep = n_replications){x/n_rep}
+# Sum of expectancies for each trial over all replications
+mean_sim_results_10_pretrials <- apply(sim_results_10_pretrials, c(1,2), FUN = sum)
+# Mean of expectancies for each trial over all replications
+mean_sim_results_10_pretrials <- apply(mean_sim_results_10_pretrials, c(1,2), FUN = divide_by_n_rep)
+# critical trial until x|cue >= 0.95 in each replication for every learning rate
+crit_trials_10_pretrials <- apply(sim_results_10_pretrials, c(1,3), FUN = find_crit_trial)
+# se of critical trials until x|cue >= 0.95 in each replication for every learning rate
+std_error_10_pretrials <- apply(crit_trials_10_pretrials, 1, FUN = std_err)
+```
+
+
+```{r}
+#compute means over replications
+x <- rowMeans(crit_trials_10_pretrials)
+#compute standard errors over replications
+y <- std_error_10_pretrials
+
+for (i in 1:length(p_encode)){
+  res_mat[2,i] <- table_fun(x[i], y[i])
+}
+
+```
+
+```{r, cache=TRUE}
+# --------------------- Diagnostic Plots --------------------------------------#
+
+# par(mfrow=c(1,2))
+# 
+# # memory encoding of the outcome over the trials
+# plot(
+#   1:n_trials
+#   , memory[, 101]
+#   , type = "l"
+#   , col = scales::alpha("black", 0.3)
+#   , ylim = c(-2, 2)
+#   , xlab = "Trial"
+#   , ylab = "Feature encoding"
+#   , main = "Features of outcome X"
+#   , las = 1
+# )
+# for(i in 102:120) {
+#   lines(
+#     1:n_trials
+#     , memory[, i]
+#     , col = scales::alpha("black", 0.3)
+#   )
+# }
+# 
+# # memory encoding of cue A over the trials
+# plot(
+#   1:n_trials
+#   , memory[, 1]
+#   , type = "l"
+#   , col = scales::alpha("black", 0.3)
+#   , ylim = c(-2, 2)
+#   , xlab = "Trial"
+#   , ylab = "Feature encoding"
+#   , main = "Features of Cue A"
+#   , las = 1
+# )
+# for(i in 2:20) {
+#   lines(
+#     1:n_trials
+#     , memory[, i]
+#     , col = scales::alpha("black", 0.3)
+#   )
+# }
+```
+
+```{r, cache=TRUE}
+# normalized echos over the trials
+
+# echos <- vector()
+# for (i in 1:n_trials){
+#   echos <- c(echos,normalized_echos_10_pretrials[[3,i,1]])
+# }
+# 
+# data <- data.frame(Stimuli = c(1:n_features), Echo = echos, frame = rep(1:n_trials, each = n_features))
+# 
+# 
+# # Make an animated boxplot
+# p <- ggplot(data, aes(x=Stimuli, y=Echo, fill=Stimuli)) + 
+#   geom_bar(stat='identity') +
+#   theme_bw() +
+#   # gganimate specific bits:
+#   transition_states(
+#     states = frame,
+#     transition_length = 1,
+#     state_length = 1, 
+#     wrap = TRUE
+#   ) 
+# 
+# p <- p + ggtitle('Now showing Trial:{closest_state}')
+# animate(p, nframes = 2*n_trials)
+```
+
+```{r}
+#-----------------------30 Pretrials Condition--------------------------------#
+
+for (m in 1:length(model)){
+  for (r in 1:n_replications) {
+    for(i in 1:length(p_encode)) {
+      # Memory is empty on first trial
+      normalized_echo <- probe_memory(probe_a, NULL, cue_features, model = model[m])
+      expectancy <- expect_event(outcome, normalized_echo)
+      memory <- learn(
+        normalized_echo
+        , training_a_event
+        , p_encode[i]
+        , NULL
+        , model = model[m]
+      )
+      sim_results_30_pretrials[[i,1,r]] <- expectancy
+      normalized_echos_30_pretrials[[i,1,r]] <- normalized_echo
+      
+       # A trials
+      for(j in 2:30) {
+          normalized_echo <- probe_memory(probe_a, memory, cue_features, model = model[m])
+          expectancy <- expect_event(outcome, normalized_echo)
+          memory <- learn(
+            normalized_echo
+            , training_a_event
+            , p_encode[i]
+            , memory
+            , model = model[m]
+          )
+          sim_results_30_pretrials[[i,j,r]] <- expectancy 
+          normalized_echos_30_pretrials[[i,j,r]] <- normalized_echo
+      }
+      
+       # A -> X trials
+      for(j in 31:n_trials) {
+          normalized_echo <- probe_memory(probe_a, memory, cue_features, model = model[m])
+          expectancy <- expect_event(outcome, normalized_echo)
+          memory <- learn(
+            normalized_echo
+            , test_ax_event
+            , p_encode[i]
+            , memory
+            , model = model[m]
+          )
+          sim_results_30_pretrials[[i,j,r]] <- expectancy 
+          normalized_echos_30_pretrials[[i,j,r]] <- normalized_echo
+      }
+    }
+  }
+}
+
+
+#-----calculate mean and standard error of results objects-----#
+divide_by_n_rep <- function(x, n_rep = n_replications){x/n_rep}
+# Sum of expectancies for each trial over all replications
+mean_sim_results_30_pretrials <- apply(sim_results_30_pretrials, c(1,2), FUN = sum)
+# Mean of expectancies for each trial over all replications
+mean_sim_results_30_pretrials <- apply(mean_sim_results_30_pretrials, c(1,2), FUN = divide_by_n_rep)
+# critical trial until x|cue >= 0.95 in each replication for every learning rate
+crit_trials_30_pretrials <- apply(sim_results_30_pretrials, c(1,3), FUN = find_crit_trial)
+# se of critical trials until x|cue >= 0.95 in each replication for every learning rate
+std_error_30_pretrials <- apply(crit_trials_30_pretrials, 1, FUN = std_err)
+```
+
+
+```{r}
+#compute means over replications
+x <- rowMeans(crit_trials_30_pretrials)
+#compute standard errors over replications
+y <- std_error_30_pretrials
+
+for (i in 1:length(p_encode)){
+  res_mat[3,i] <- table_fun(x[i], y[i])
+}
+
+knitr::kable(cbind(Condition = c("0 Pretrials", "10 Pretrials", "30 Pretrials"), res_mat), col.names = c("Condition", round(p_encode, 2)))
+
+```
+
+```{r, cache=TRUE}
+# --------------------- Diagnostic Plots --------------------------------------#
+
+# par(mfrow=c(1,2))
+# 
+# # memory encoding of the outcome over the trials
+# plot(
+#   1:n_trials
+#   , memory[, 101]
+#   , type = "l"
+#   , col = scales::alpha("black", 0.3)
+#   , ylim = c(-2, 2)
+#   , xlab = "Trial"
+#   , ylab = "Feature encoding"
+#   , main = "Features of outcome X"
+#   , las = 1
+# )
+# for(i in 102:120) {
+#   lines(
+#     1:n_trials
+#     , memory[, i]
+#     , col = scales::alpha("black", 0.3)
+#   )
+# }
+
+# # memory encoding of cue A over the trials
+# plot(
+#   1:n_trials
+#   , memory[, 1]
+#   , type = "l"
+#   , col = scales::alpha("black", 0.3)
+#   , ylim = c(-2, 2)
+#   , xlab = "Trial"
+#   , ylab = "Feature encoding"
+#   , main = "Features of Cue A"
+#   , las = 1
+# )
+# for(i in 2:20) {
+#   lines(
+#     1:n_trials
+#     , memory[, i]
+#     , col = scales::alpha("black", 0.3)
+#   )
+# }
+```
+
+```{r, cache=TRUE}
+# normalized echos over the trials
+
+# echos <- vector()
+# for (i in 1:n_trials){
+#   echos <- c(echos,normalized_echos_30_pretrials[[3,i,1]])
+# }
+# 
+# data <- data.frame(Stimuli = c(1:n_features), Echo = echos, frame = rep(1:n_trials, each = n_features))
+# 
+# 
+# # Make an animated boxplot
+# p <- ggplot(data, aes(x=Stimuli, y=Echo, fill=Stimuli)) + 
+#   geom_bar(stat='identity') +
+#   theme_bw() +
+#   # gganimate specific bits:
+#   transition_states(
+#     states = frame,
+#     transition_length = 1,
+#     state_length = 1, 
+#     wrap = TRUE
+#   ) 
+# 
+# p <- p + ggtitle('Now showing Trial:{closest_state}')
+# animate(p, nframes = 2*n_trials)f
+```
